@@ -54,15 +54,15 @@
 
 % Parsing
 
-:- pred json.parse_value(string::in, int::in, int::out, json.result(json.value)::out) is det.
-:- pred json.parse_property(string::in, int::in, int::out, json.result(json.property)::out) is det.
+:- pred json.parse_value(string::in, int::in, int::out, int::in, json.result(json.value)::out) is det.
+:- pred json.parse_property(string::in, int::in, int::out, int::in, json.result(json.property)::out) is det.
 
-:- pred json.parse_integer(string::in, int::in, int::out, json.result(json.integer)::out) is det.
-:- pred json.parse_number(string::in, int::in, int::out, json.result(json.number)::out) is det.
-:- pred json.parse_string(string::in, int::in, int::out, json.result(json.string)::out) is det.
+:- pred json.parse_integer(string::in, int::in, int::out, int::in, json.result(json.integer)::out) is det.
+:- pred json.parse_number(string::in, int::in, int::out, int::in, json.result(json.number)::out) is det.
+:- pred json.parse_string(string::in, int::in, int::out, int::in, json.result(json.string)::out) is det.
 
-:- pred json.parse_array(string::in, int::in, int::out, json.result(json.array)::out) is det.
-:- pred json.parse_object(string::in, int::in, int::out, json.result(json.object)::out) is det.
+:- pred json.parse_array(string::in, int::in, int::out, int::in, json.result(json.array)::out) is det.
+:- pred json.parse_object(string::in, int::in, int::out, int::in, json.result(json.object)::out) is det.
 
 :- pred json.parse(string::in, json.result(json.root)::out) is det.
 
@@ -335,12 +335,15 @@ json.char_is_breaking(':').
 
 json.is_negative_sign('-').
 
-:- pred json.get_space_end(string::in, int::in, int::out) is det.
+:- pred json.get_space_end(string::in, int::in, int::in, int::out) is det.
 
-json.get_space_end(String, Index, End) :-
-    if string.unsafe_index(String, Index, C), char_is_space(C)
+json.get_space_end(String, Index, Max, End) :-
+    if Index=Max
     then
-        json.get_space_end(String, Index+1, End)
+        End = Index
+    else if string.unsafe_index(String, Index, C), char_is_space(C)
+    then
+        json.get_space_end(String, Index+1, Max, End)
     else
         End = Index.
 
@@ -348,8 +351,8 @@ json.get_space_end(String, Index, End) :-
 :- pred json.char_digit_dec(char::in, int::out) is semidet.
 :- pred json.char_digit_oct(char::in, int::out) is semidet.
 
-:- pred json.parse_integer(string, int, int, pred(char, int, int), int, int).
-:- mode json.parse_integer(in, in, out, pred(in, in, out) is semidet, in, out) is semidet.
+:- pred json.parse_integer(string, int, int, int, pred(char, int, int), int, int).
+:- mode json.parse_integer(in, in, out, in, pred(in, in, out) is semidet, in, out) is semidet.
 
 % Generally unsafe. You must ensure that the first param translates to a single
 %  digit in the base.
@@ -420,46 +423,48 @@ json.parse_digit_oct(Char::in, N::in, Out::out) :-
     json.char_digit_oct(Char, X),
     json.append_digit_oct(X, N, Out).
 
-json.parse_integer(String, Index, End, Op, In, Out) :-
+json.parse_integer(String, Index, End, Max, Op, In, Out) :-
+    Index<Max,
     string.unsafe_index(String, Index, C),
     ( if Op(C, In, X)
       then
-        json.parse_integer(String, Index+1, End, Op, X, Out)
+        json.parse_integer(String, Index+1, End, Max, Op, X, Out)
       else
         json.char_is_breaking(C),
         Out = In,
         End = Index
     ).
     
-json.parse_integer(String::in, Start::in, End::out, JSInteger::out) :-
-    ( if
+json.parse_integer(String::in, Start::in, End::out, Max::in, JSInteger::out) :-
+    ( if Start<Max,
         ( if string.unsafe_index(String, Start, '0')
           then
-            ( if string.unsafe_index(String, Start+1, 'x') ; string.index(String, Start+1, 'X')
+            ( if string.index(String, Start+1, 'x') ; string.index(String, Start+1, 'X')
               then
-                json.parse_integer(String, Start+2, IntEnd, json.parse_digit_hex, 0, N)
+                json.parse_integer(String, Start+2, IntEnd, Max, json.parse_digit_hex, 0, N)
               else
-                json.parse_integer(String, Start+1, IntEnd, json.parse_digit_oct, 0, N)
+                json.parse_integer(String, Start+1, IntEnd, Max, json.parse_digit_oct, 0, N)
             )
           else 
-            json.parse_integer(String, Start, IntEnd, json.parse_digit_dec, 0, N)
+            json.parse_integer(String, Start, IntEnd, Max, json.parse_digit_dec, 0, N)
         )
       then
-        json.get_space_end(String, IntEnd, End),
+        json.get_space_end(String, IntEnd, Max, End),
         JSInteger = ok(json.integer(N))
       else
         JSInteger = json.error(0, Start, "Number", string.between(String, Start, End)),
         End-1 = Start
     ).
 
-json.parse_number(String::in, Start::in, End::out, JSNumber::out) :-
+json.parse_number(String::in, Start::in, End::out, Max::in, JSNumber::out) :-
     ( if
-        json.parse_integer(String, Start, WholeEnd, json.parse_digit_dec, 0, W),
+        json.parse_integer(String, Start, WholeEnd, Max, json.parse_digit_dec, 0, W),
+        Max>WholeEnd,
         string.unsafe_index(String, WholeEnd, '.'),
-        json.parse_integer(String, WholeEnd+1, DecimalEnd, json.parse_digit_dec, 0, D),
+        json.parse_integer(String, WholeEnd+1, DecimalEnd, Max, json.parse_digit_dec, 0, D),
         M = float(D)/float(WholeEnd+1-DecimalEnd)
       then
-        json.get_space_end(String, DecimalEnd, End),
+        json.get_space_end(String, DecimalEnd, Max, End),
         JSNumber = ok(json.number(float(W) + M))
       else
         JSNumber = json.error(0, Start, "Number", string.between(String, Start, End)),
@@ -467,23 +472,28 @@ json.parse_number(String::in, Start::in, End::out, JSNumber::out) :-
     ).
     
 
-:- pred json.find_string_end(string::in, char::in, int::in, int::out) is semidet.
+:- pred json.find_string_end(string::in, char::in, int::in, int::in, int::out) is semidet.
 
-json.find_string_end(String::in, C::in, Start::in, End::out) :-
+json.find_string_end(String::in, C::in, Start::in, Max::in, End::out) :-
+    not Start=Max,
     ( if string.unsafe_index(String, Start, C)
       then 
         End = Start
       else if string.unsafe_index(String, Start, '\\')
       then
-        json.find_string_end(String, C, Start+2, End)
+        json.find_string_end(String, C, Start+2, Max, End)
       else
-        json.find_string_end(String, C, Start+1, End)
+        json.find_string_end(String, C, Start+1, Max, End)
     ).
 
-json.parse_string(String::in, Start::in, End::out, JSString::out) :-
-    ( if string.index(String, Start, C), json.char_is_quote(C)
+json.parse_string(String::in, Start::in, End::out, Max::in, JSString::out) :-
+    ( if Start=Max
       then
-        ( if json.find_string_end(String, C, Start+1, LiteralEnd)
+        JSString = json.error(0, Max, "String", "End Of Input"),
+        End = Max
+      else if string.unsafe_index(String, Start, C), json.char_is_quote(C)
+      then
+        ( if json.find_string_end(String, C, Start+1, Max, LiteralEnd)
           then
             ( if not string.index(String, LiteralEnd, C)
               then
@@ -492,7 +502,7 @@ json.parse_string(String::in, Start::in, End::out, JSString::out) :-
               else
                 string.between(String, Start+1, LiteralEnd, OutString),
                 JSString = ok(json.string(OutString)),
-                json.get_space_end(String, LiteralEnd+1, End)
+                json.get_space_end(String, LiteralEnd+1, Max, End)
             )
           else
             JSString = json.error(0, Start, "String Literal", string.between(String, Start, End)),
@@ -503,59 +513,59 @@ json.parse_string(String::in, Start::in, End::out, JSString::out) :-
         End-1 = Start
     ).
 
-:- pred json.array_element(string::in, int::in, int::out, list(json.value)::in, json.result(list(json.value))::out) is det.
+:- pred json.array_element(string::in, int::in, int::out, int::in, list(json.value)::in, json.result(list(json.value))::out) is det.
 
-json.array_element(String::in, Start::in, End::out, ArrayIn::in, ArrayOut::out) :-
-    json.parse_value(String, Start, TermEnd, ValueResult), 
+json.array_element(String::in, Start::in, End::out, Max::in, ArrayIn::in, ArrayOut::out) :-
+    json.parse_value(String, Start, TermEnd, Max, ValueResult), 
     (
         ValueResult = json.error(L, At, E, U), ArrayOut = json.error(L, At, E, U),
         End = TermEnd
     ;   
         ValueResult = ok(Value),
-        json.get_space_end(String, TermEnd, SpaceEnd),
+        json.get_space_end(String, TermEnd, Max, SpaceEnd),
          % Parse another term?
         ( if string.index(String, SpaceEnd, ',')
           then
-            json.get_space_end(String, SpaceEnd+1, NextTermStart),
-            json.array_element(String, NextTermStart, End, ArrayIn++[Value], ArrayOut)
+            json.get_space_end(String, SpaceEnd+1, Max, NextTermStart),
+            json.array_element(String, NextTermStart, End, Max, ArrayIn++[Value], ArrayOut)
           else
             ArrayOut = ok(ArrayIn++[Value]),
             End = SpaceEnd
         )
     ).
 
-:- pred json.object_element(string::in, int::in, int::out, list(json.property)::in, json.result(list(json.property))::out) is det.
+:- pred json.object_element(string::in, int::in, int::out, int::in, list(json.property)::in, json.result(list(json.property))::out) is det.
 
-json.object_element(String::in, Start::in, End::out, PropertiesIn::in, PropertiesOut::out) :-
+json.object_element(String::in, Start::in, End::out, Max::in, PropertiesIn::in, PropertiesOut::out) :-
 
-    json.parse_property(String, Start, TermEnd, PropertyResult),
+    json.parse_property(String, Start, TermEnd, Max, PropertyResult),
     (
         PropertyResult = json.error(L, At, E, U), PropertiesOut = json.error(L, At, E, U),
         End = TermEnd
     ;   
         PropertyResult = ok(Property),
-        json.get_space_end(String, TermEnd, SpaceEnd),
+        json.get_space_end(String, TermEnd, Max, SpaceEnd),
         % Parse another property?
         ( if string.index(String, SpaceEnd, ',')
           then
-            json.get_space_end(String, SpaceEnd+1, NextTermStart),
-            json.object_element(String, NextTermStart, End, PropertiesIn++[Property], PropertiesOut)
+            json.get_space_end(String, SpaceEnd+1, Max, NextTermStart),
+            json.object_element(String, NextTermStart, End, Max, PropertiesIn++[Property], PropertiesOut)
           else
             PropertiesOut = ok(PropertiesIn++[Property]),
             End = SpaceEnd
         )
     ).
 
-json.parse_array(String::in, Start::in, End::out, Array::out) :-
+json.parse_array(String::in, Start::in, End::out, Max::in, Array::out) :-
     ( if not string.index(String, Start, '[')
       then
         Array = json.error(0, Start, "[", string.between(String, Start, End)),
         End-1 = Start
       else
-        json.get_space_end(String, Start+1, TermStart),
+        json.get_space_end(String, Start+1, Max, TermStart),
         ( if not string.index(String, TermStart, ']')
           then
-            json.array_element(String, TermStart, ListEnd, [], ValueArrayResult)
+            json.array_element(String, TermStart, ListEnd, Max, [], ValueArrayResult)
           else
             ListEnd = TermStart,
             ValueArrayResult = ok([])
@@ -565,42 +575,42 @@ json.parse_array(String::in, Start::in, End::out, Array::out) :-
             End = TermStart
         ;
             ValueArrayResult = ok(ValueArray),
-            json.get_space_end(String, ListEnd, ArrayEnd),
+            json.get_space_end(String, ListEnd, Max, ArrayEnd),
             ( if not string.index(String, ArrayEnd, ']')
               then
                 Array = json.error(0, ArrayEnd, "]", string.between(String, ArrayEnd, End)),
                 End-1 = ArrayEnd
               else
-                json.get_space_end(String, ArrayEnd+1, End),
+                json.get_space_end(String, ArrayEnd+1, Max, End),
                 Array = ok(json.array(ValueArray))
             )
         )
     ).
 
-json.parse_object(String::in, Start::in, End::out, Object::out) :-
+json.parse_object(String::in, Start::in, End::out, Max::in, Object::out) :-
     ( if not string.index(String, Start, '{')
       then
         Object = json.error(0, Start, "{", string.between(String, Start, End)),
         End-1 = Start
       else
-        json.get_space_end(String, Start+1, TermStart),
+        json.get_space_end(String, Start+1, Max, TermStart),
         ( if string.index(String, TermStart, '}')
           then
             ListEnd = TermStart,
             PropertiesResult = ok([])
           else
-            json.object_element(String, TermStart, ListEnd, [], PropertiesResult)
+            json.object_element(String, TermStart, ListEnd, Max, [], PropertiesResult)
         ),
         (
             PropertiesResult = json.error(L, At, E, U), Object = json.error(L, At, E, U),
             End = TermStart
         ;
             PropertiesResult = ok(Properties),
-            json.get_space_end(String, ListEnd, CloseBracket),
+            json.get_space_end(String, ListEnd, Max, CloseBracket),
             ( if string.index(String, CloseBracket, '}')
               then
                 Object = ok(json.object(Properties)),
-                json.get_space_end(String, CloseBracket+1, End)
+                json.get_space_end(String, CloseBracket+1, Max, End)
               else
                 Object = json.error(0, CloseBracket, "}", string.between(String, CloseBracket, End)),
                 End-1 = CloseBracket
@@ -608,10 +618,10 @@ json.parse_object(String::in, Start::in, End::out, Object::out) :-
         )
     ).
     
-:- pred json.number_literal(string::in, int::in, int::out, json.result(json.value)::out) is det.
+:- pred json.number_literal(string::in, int::in, int::out, int::in, json.result(json.value)::out) is det.
 
-json.number_literal(String::in, Start::in, End::out, Value::out) :-
-    ( if string.unsafe_index(String, 0, '-')
+json.number_literal(String::in, Start::in, End::out, Max::in, Value::out) :-
+    ( if string.index(String, 0, '-')
       then
         C = -1,
         TermStart = Start+1
@@ -619,14 +629,14 @@ json.number_literal(String::in, Start::in, End::out, Value::out) :-
         C = 1,
         TermStart = Start
     ),
-    ( if json.parse_number(String, TermStart, T, ok(json.number(N)))
+    ( if json.parse_number(String, TermStart, T, Max, ok(json.number(N)))
       then
         Value = ok(json.number(N * float(C))),
-        json.get_space_end(String, T, End)
-      else if json.parse_integer(String, TermStart, T, ok(json.integer(I)))
+        json.get_space_end(String, T, Max, End)
+      else if json.parse_integer(String, TermStart, T, Max, ok(json.integer(I)))
       then
         Value = ok(json.integer(I * C)),
-        json.get_space_end(String, T, End)
+        json.get_space_end(String, T, Max, End)
       else
         Value = json.error(0, Start, "Number Literal", string.between(String, Start, End)),
         End-1 = Start
@@ -638,40 +648,40 @@ json.char_is_array_start('[').
 :- pred json.char_is_object_start(char::in) is semidet.
 json.char_is_object_start('{').
 
-json.parse_property(String::in, Start::in, End::out, Property::out) :-
-    json.parse_string(String, Start, NameEnd, NameResult),
+json.parse_property(String::in, Start::in, End::out, Max::in, Property::out) :-
+    json.parse_string(String, Start, NameEnd, Max, NameResult),
     (
         NameResult = json.error(L, At, E, U), Property = json.error(L, At, E, U),
         End = NameEnd
     ;
         NameResult = ok(Name),
-        json.get_space_end(String, NameEnd, DelimiterStart),
+        json.get_space_end(String, NameEnd, Max, DelimiterStart),
         ( if not string.index(String, DelimiterStart, ':')
           then
             Property = json.error(0, DelimiterStart, ":", string.between(String, DelimiterStart, End)),
             End-1 = DelimiterStart
           else
-            json.get_space_end(String, DelimiterStart+1, TermStart),
-            json.parse_value(String, TermStart, TermEnd, ValueResult),
+            json.get_space_end(String, DelimiterStart+1, Max, TermStart),
+            json.parse_value(String, TermStart, TermEnd, Max, ValueResult),
             (
                 ValueResult = json.error(L, At, E, U), Property = json.error(L, At, E, U),
                 End = TermEnd
             ;
                 ValueResult = ok(Value), Property = ok(json.property(Name, Value)),
-                json.get_space_end(String, TermEnd, End)
+                json.get_space_end(String, TermEnd, Max, End)
             )
        )
     ).
 
-json.parse_value(String::in, Start::in, End::out, Result::out) :-
+json.parse_value(String::in, Start::in, End::out, Max::in, Result::out) :-
     ( if string.index(String, Start, C)
       then
         ( if json.is_negative_sign(C) ; json.char_digit_dec(C, _)
           then 
-            json.number_literal(String, Start, TermEnd, Value)
+            json.number_literal(String, Start, TermEnd, Max, Value)
           else if json.char_is_quote(C)
           then % String
-            json.parse_string(String, Start, TermEnd, S),
+            json.parse_string(String, Start, TermEnd, Max, S),
             (
                 S = ok(json.string(T)), Value = ok(json.string(T))
             ;
@@ -679,7 +689,7 @@ json.parse_value(String::in, Start::in, End::out, Result::out) :-
             )
           else if json.char_is_array_start(C)
           then % Array
-            json.parse_array(String, Start, TermEnd, A),
+            json.parse_array(String, Start, TermEnd, Max, A),
             (
                 A = ok(json.array(R)), Value = ok(json.array(R))
             ;
@@ -687,7 +697,7 @@ json.parse_value(String::in, Start::in, End::out, Result::out) :-
             )
           else if json.char_is_object_start(C)
           then % Object
-            json.parse_object(String, Start, TermEnd, O),
+            json.parse_object(String, Start, TermEnd, Max, O),
             (
                 O = ok(json.object(J)), Value = ok(json.object(J))
             ;
@@ -714,7 +724,7 @@ json.parse_value(String::in, Start::in, End::out, Result::out) :-
         ;
             Value = json.error(L4, At4, E4, U4), Result = json.error(L4, At4, E4, U4)
         ),
-        json.get_space_end(String, TermEnd, End)
+        json.get_space_end(String, TermEnd, Max, End)
       else
         % Line really IS zero here.
         Result = json.error(0, Start, "", "End of input"),
@@ -722,7 +732,7 @@ json.parse_value(String::in, Start::in, End::out, Result::out) :-
     ).
 
 json.parse(String::in, Result::out) :-
-    json.parse_value(String, 0, _, ValueResult),
+    json.parse_value(String, 0, _, string.length(String), ValueResult),
     (
         ValueResult = json.error(L, At, E, U), Result = json.error(L, At, E, U)
     ;
@@ -751,8 +761,8 @@ json.parse(String::in, Result::out) :-
     ).
 
 main(!IO) :-
-    open_input("instruments.json", InResult, !IO),
-    open_output("new_instruments.json", OutResult, !IO),
+    open_input("apache_builds.json", InResult, !IO),
+    open_output("new_apache_builds.json", OutResult, !IO),
     ( if InResult = ok(InStream), OutResult = ok(OutStream)
       then
         io.read_file_as_string(InStream, StringResult, !IO),
