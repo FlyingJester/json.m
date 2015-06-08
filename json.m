@@ -487,15 +487,11 @@ json.find_string_end(String::in, C::in, Start::in, Max::in, End::out) :-
     ).
 
 json.parse_string(String::in, Start::in, End::out, Max::in, JSString::out) :-
-    ( if Start=Max
+    ( if Start<Max, string.unsafe_index(String, Start, C), json.char_is_quote(C)
       then
-        JSString = json.error(0, Max, "String", "End Of Input"),
-        End = Max
-      else if string.unsafe_index(String, Start, C), json.char_is_quote(C)
-      then
-        ( if json.find_string_end(String, C, Start+1, Max, LiteralEnd)
+        ( if json.find_string_end(String, C, Start+1, Max, LiteralEnd), LiteralEnd<Max
           then
-            string.between(String, Start+1, LiteralEnd, OutString),
+            string.unsafe_between(String, Start+1, LiteralEnd, OutString),
             JSString = ok(json.string(OutString)),
             json.get_space_end(String, LiteralEnd+1, Max, End)
           else
@@ -697,15 +693,15 @@ json.parse_value(String::in, Start::in, End::out, Max::in, Result::out) :-
             ;
                 O = json.error(L3, At3, E3, U3), Value = json.error(L3, At3, E3, U3)
             )
-          else if string.between(String, Start, Start+4, "true")
+          else if Start+4<Max, string.unsafe_between(String, Start, Start+4, "true")
           then % Boolean literal "true"
             Value = ok(json.boolean(yes)),
             TermEnd-4 = Start
-          else if string.between(String, Start, Start+5, "false")
+          else if Start+5<Max, string.unsafe_between(String, Start, Start+5, "false")
           then % Boolean literal "false"
             Value = ok(json.boolean(no)),
             TermEnd-5 = Start
-          else if string.between(String, Start, Start+4, "null")
+          else if Start+4<Max, string.unsafe_between(String, Start, Start+4, "null")
           then % Object literal "null"
             Value = ok(null),
             TermEnd-4 = Start
