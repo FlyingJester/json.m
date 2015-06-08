@@ -439,7 +439,7 @@ json.parse_integer(String::in, Start::in, End::out, Max::in, JSInteger::out) :-
     ( if Start<Max,
         ( if string.unsafe_index(String, Start, '0')
           then
-            ( if string.index(String, Start+1, 'x') ; string.index(String, Start+1, 'X')
+            ( if Start<Max-2, ( string.unsafe_index(String, Start+1, 'x') ; string.unsafe_index(String, Start+1, 'X') )
               then
                 json.parse_integer(String, Start+2, IntEnd, Max, json.parse_digit_hex, 0, N)
               else
@@ -495,15 +495,9 @@ json.parse_string(String::in, Start::in, End::out, Max::in, JSString::out) :-
       then
         ( if json.find_string_end(String, C, Start+1, Max, LiteralEnd)
           then
-            ( if not string.index(String, LiteralEnd, C)
-              then
-                JSString = json.error(0, LiteralEnd, "Close Quote", string.between(String, LiteralEnd, End)),
-                End-1 = LiteralEnd
-              else
-                string.between(String, Start+1, LiteralEnd, OutString),
-                JSString = ok(json.string(OutString)),
-                json.get_space_end(String, LiteralEnd+1, Max, End)
-            )
+            string.between(String, Start+1, LiteralEnd, OutString),
+            JSString = ok(json.string(OutString)),
+            json.get_space_end(String, LiteralEnd+1, Max, End)
           else
             JSString = json.error(0, Start, "String Literal", string.between(String, Start, End)),
             End-1 = Start
