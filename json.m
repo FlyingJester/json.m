@@ -2,6 +2,8 @@
 :- interface.
 
 :- import_module bool.
+
+% TODO: figure out how arrays work! More than half of our time is spent appending to lists.
 :- import_module list.
 
 :- type json.value.
@@ -336,7 +338,7 @@ json.is_negative_sign('-').
 :- pred json.get_space_end(string::in, int::in, int::out) is det.
 
 json.get_space_end(String, Index, End) :-
-    if string.index(String, Index, C), char_is_space(C)
+    if string.unsafe_index(String, Index, C), char_is_space(C)
     then
         json.get_space_end(String, Index+1, End)
     else
@@ -419,26 +421,21 @@ json.parse_digit_oct(Char::in, N::in, Out::out) :-
     json.append_digit_oct(X, N, Out).
 
 json.parse_integer(String, Index, End, Op, In, Out) :-
-    ( if string.index(String, Index, C)
+    string.unsafe_index(String, Index, C),
+    ( if Op(C, In, X)
       then
-        ( if Op(C, In, X)
-          then
-            json.parse_integer(String, Index+1, End, Op, X, Out)
-          else
-            json.char_is_breaking(C),
-            Out = In,
-            End = Index
-        )
+        json.parse_integer(String, Index+1, End, Op, X, Out)
       else
+        json.char_is_breaking(C),
         Out = In,
         End = Index
     ).
-
+    
 json.parse_integer(String::in, Start::in, End::out, JSInteger::out) :-
     ( if
-        ( if string.index(String, Start, '0')
+        ( if string.unsafe_index(String, Start, '0')
           then
-            ( if string.index(String, Start+1, 'x') ; string.index(String, Start+1, 'X')
+            ( if string.unsafe_index(String, Start+1, 'x') ; string.index(String, Start+1, 'X')
               then
                 json.parse_integer(String, Start+2, IntEnd, json.parse_digit_hex, 0, N)
               else
@@ -454,10 +451,11 @@ json.parse_integer(String::in, Start::in, End::out, JSInteger::out) :-
         JSInteger = json.error(0, Start, "Number", string.between(String, Start, End)),
         End-1 = Start
     ).
+
 json.parse_number(String::in, Start::in, End::out, JSNumber::out) :-
     ( if
         json.parse_integer(String, Start, WholeEnd, json.parse_digit_dec, 0, W),
-        string.index(String, WholeEnd, '.'),
+        string.unsafe_index(String, WholeEnd, '.'),
         json.parse_integer(String, WholeEnd+1, DecimalEnd, json.parse_digit_dec, 0, D),
         M = float(D)/float(WholeEnd+1-DecimalEnd)
       then
@@ -472,10 +470,10 @@ json.parse_number(String::in, Start::in, End::out, JSNumber::out) :-
 :- pred json.find_string_end(string::in, char::in, int::in, int::out) is semidet.
 
 json.find_string_end(String::in, C::in, Start::in, End::out) :-
-    ( if string.index(String, Start, C)
+    ( if string.unsafe_index(String, Start, C)
       then 
         End = Start
-      else if string.index(String, Start, '\\')
+      else if string.unsafe_index(String, Start, '\\')
       then
         json.find_string_end(String, C, Start+2, End)
       else
@@ -609,7 +607,30 @@ json.parse_object(String::in, Start::in, End::out, Object::out) :-
             )
         )
     ).
+    
+:- pred json.number_literal(string::in, int::in, int::out, json.result(json.value)::out) is det.
 
+json.number_literal(String::in, Start::in, End::out, Value::out) :-
+    ( if string.unsafe_index(String, 0, '-')
+      then
+        C = -1,
+        TermStart = Start+1
+      else
+        C = 1,
+        TermStart = Start
+    ),
+    ( if json.parse_number(String, TermStart, T, ok(json.number(N)))
+      then
+        Value = ok(json.number(N * float(C))),
+        json.get_space_end(String, T, End)
+      else if json.parse_integer(String, TermStart, T, ok(json.integer(I)))
+      then
+        Value = ok(json.integer(I * C)),
+        json.get_space_end(String, T, End)
+      else
+        Value = json.error(0, Start, "Number Literal", string.between(String, Start, End)),
+        End-1 = Start
+    ).
 
 :- pred json.char_is_array_start(char::in) is semidet.
 json.char_is_array_start('[').
@@ -640,30 +661,6 @@ json.parse_property(String::in, Start::in, End::out, Property::out) :-
                 json.get_space_end(String, TermEnd, End)
             )
        )
-    ).
-    
-:- pred json.number_literal(string::in, int::in, int::out, json.result(json.value)::out) is det.
-
-json.number_literal(String::in, Start::in, End::out, Value::out) :-
-    ( if string.index(String, 0, '-')
-      then
-        C = -1,
-        TermStart = Start+1
-      else
-        C = 1,
-        TermStart = Start
-    ),
-    ( if json.parse_number(String, TermStart, T, ok(json.number(N)))
-      then
-        Value = ok(json.number(N * float(C))),
-        json.get_space_end(String, T, End)
-      else if json.parse_integer(String, TermStart, T, ok(json.integer(I)))
-      then
-        Value = ok(json.integer(I * C)),
-        json.get_space_end(String, T, End)
-      else
-        Value = json.error(0, Start, "Number Literal", string.between(String, Start, End)),
-        End-1 = Start
     ).
 
 json.parse_value(String::in, Start::in, End::out, Result::out) :-
@@ -754,8 +751,8 @@ json.parse(String::in, Result::out) :-
     ).
 
 main(!IO) :-
-    open_input("ops.json", InResult, !IO),
-    open_output("new_ops.json", OutResult, !IO),
+    open_input("instruments.json", InResult, !IO),
+    open_output("new_instruments.json", OutResult, !IO),
     ( if InResult = ok(InStream), OutResult = ok(OutStream)
       then
         io.read_file_as_string(InStream, StringResult, !IO),
