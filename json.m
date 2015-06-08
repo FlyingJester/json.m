@@ -28,24 +28,43 @@
     ; json.boolean(bool).
 
 % TODO: Is null really ok?
-:- type json.result --->
+:- type json.root --->
     null
     ; json.object(list(json.property))
     ; json.array(list(json.value)).
 
+:- type json.error ---> json.error(line::int, expected::string, unexpected::string).
+
+:- type json.result(T) ---> ok(T) ; json.error(int, int, string, string).
+
+% Quick and Dirty Parsing
+%:- pred json.parse_value(string::in, int::in, int::out, json.value::out) is semidet.
+%:- pred json.parse_property(string::in, int::in, int::out, json.property::out) is semidet.
+
+%:- pred json.parse_integer(string::in, int::in, int::out, json.integer::out) is semidet.
+%:- pred json.parse_number(string::in, int::in, int::out, json.number::out) is semidet.
+%:- pred json.parse_string(string::in, int::in, int::out, json.string::out) is semidet.
+
+%:- pred json.parse_array(string::in, int::in, int::out, json.array::out) is semidet.
+%:- pred json.parse_object(string::in, int::in, int::out, json.object::out) is semidet.
+
+%:- pred json.parse(string::in, json.result::out) is semidet.
+
 % Parsing
 
-:- pred json.parse_value(string::in, int::in, int::out, json.value::out) is semidet.
-:- pred json.parse_property(string::in, int::in, int::out, json.property::out) is semidet.
+:- pred json.parse_value(string::in, int::in, int::out, json.result(json.value)::out) is det.
+:- pred json.parse_property(string::in, int::in, int::out, json.result(json.property)::out) is det.
 
-:- pred json.parse_integer(string::in, int::in, int::out, json.integer::out) is semidet.
-:- pred json.parse_number(string::in, int::in, int::out, json.number::out) is semidet.
-:- pred json.parse_string(string::in, int::in, int::out, json.string::out) is semidet.
+:- pred json.parse_integer(string::in, int::in, int::out, json.result(json.integer)::out) is det.
+:- pred json.parse_number(string::in, int::in, int::out, json.result(json.number)::out) is det.
+:- pred json.parse_string(string::in, int::in, int::out, json.result(json.string)::out) is det.
 
-:- pred json.parse_array(string::in, int::in, int::out, json.array::out) is semidet.
-:- pred json.parse_object(string::in, int::in, int::out, json.object::out) is semidet.
+:- pred json.parse_array(string::in, int::in, int::out, json.result(json.array)::out) is det.
+:- pred json.parse_object(string::in, int::in, int::out, json.result(json.object)::out) is det.
 
-:- pred json.parse(string::in, json.result::out) is semidet.
+:- pred json.parse(string::in, json.result(json.root)::out) is det.
+
+
 
 % Writing
 
@@ -67,8 +86,12 @@
 :- pred json.write_object(json.object::in, io.output_stream::in, io::di, io::uo) is det.
 :- pred json.write_object(json.object::in, int::in, io.output_stream::in, io::di, io::uo) is det.
 
-:- pred json.write(json.result::in, io.output_stream::in, io::di, io::uo) is det.
-:- pred json.write_pretty(json.result::in, io.output_stream::in, io::di, io::uo) is det.
+:- pred json.write(json.root::in, io.output_stream::in, io::di, io::uo) is det.
+:- pred json.write_pretty(json.root::in, io.output_stream::in, io::di, io::uo) is det.
+
+% For testing purposes
+:- pred main(io::di, io::uo) is det.
+
 
 % Implementation
 :- implementation.
@@ -137,71 +160,114 @@ json.write_string(JSString, Stream, !IO) :-
     io.write_string(Stream, String, !IO),
     io.write_char(Stream, '"', !IO).
 
-:- pred json.write_array_element(json.value::in, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
-:- pred json.write_array_element(json.value::in, int::in, int::out, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
+:- pred json.write_array_element(json.value::in, json.value::in, json.value::out, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
+:- pred json.write_array_element(json.value::in, json.value::in, json.value::out, int::in, int::out, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
 
-json.write_array_element(Value, Stream, Out, !IO) :-
+json.write_array_element(Value, Last, Z, Stream, Out, !IO) :-
     json.write_value(Value, Stream, !IO),
-    io.write_char(Stream, ',', !IO),
-    io.write_char(Stream, ' ', !IO),
+    ( if Value=Last
+      then
+        Z=Value,
+        io.write_char(Stream, ' ', !IO)
+      else
+        Z=Last,
+        io.write_char(Stream, ',', !IO)
+    ),
     Out = Stream.
 
-json.write_array_element(Value, Indent, IndentOut, Stream, StreamOut, !IO) :-
+json.write_array_element(Value, Last, Z, Indent, IndentOut, Stream, StreamOut, !IO) :-
     json.write_indent(Indent, Stream, !IO),
     json.write_value(Value, Stream, !IO),
-    io.write_char(Stream, ',', !IO),
+    ( if Value=Last
+      then
+        Z=Value
+      else
+        Z=Last,
+        io.write_char(Stream, ',', !IO)
+    ),
     io.nl(Stream, !IO),
     StreamOut = Stream,
     IndentOut = Indent.
 
-:- pred json.write_object_element(json.property::in, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
-:- pred json.write_object_element(json.property::in, int::in, int::out, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
+:- pred json.write_object_element(json.property::in, json.property::in, json.property::out, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
+:- pred json.write_object_element(json.property::in, json.property::in, json.property::out, int::in, int::out, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
 
-json.write_object_element(Property, Stream, Out, !IO) :-
+json.write_object_element(Property, Last, Z, Stream, Out, !IO) :-
     json.write_property(Property, Stream, !IO),
-    io.write_char(Stream, ',', !IO),
-    io.write_char(Stream, ' ', !IO),
+    ( if Property=Last
+      then
+        Z=Property,
+        io.write_char(Stream, ' ', !IO)
+      else
+        Z=Last,
+        io.write_char(Stream, ',', !IO)
+    ),
     Out = Stream.
 
-json.write_object_element(Property, Indent, IndentOut, Stream, StreamOut, !IO) :-
+json.write_object_element(Property, Last, Z, Indent, IndentOut, Stream, StreamOut, !IO) :-
     json.write_indent(Indent, Stream, !IO),
     json.write_property(Property, Stream, !IO),
-    io.write_char(Stream, ',', !IO),
+    ( if Property=Last
+      then
+        Z=Property
+      else
+        Z=Last,
+        io.write_char(Stream, ',', !IO)
+    ),
     io.nl(Stream, !IO),
     StreamOut = Stream,
     IndentOut = Indent.
-     
 
 json.write_array(JSArray, Stream, !IO) :-
     JSArray = json.array(Array),
-    io.write_char(Stream, '[', !IO),
-    list.foldl2(json.write_array_element, Array, Stream, _, !IO),
-    io.write_char(Stream, ']', !IO),
+    ( if list.last(Array, Last)
+      then
+        io.write_char(Stream, '[', !IO),
+        list.foldl3(json.write_array_element, Array, Last, _, Stream, _, !IO),
+        io.write_char(Stream, ']', !IO)
+      else
+        io.write_char(Stream, '[', !IO), io.write_char(Stream, ']', !IO)
+    ),
     io.nl(Stream, !IO).
 
 json.write_array(JSArray, Step, Stream, !IO) :-
     JSArray = json.array(Array),
     json.write_indent(Step, Stream, !IO),
-    io.write_char(Stream, '[', !IO),
-    list.foldl3(json.write_array_element, Array, Step+1, _, Stream, _, !IO),
-    json.write_indent(Step, Stream, !IO),
-    io.write_char(Stream, ']', !IO),
+    ( if list.last(Array, Last)
+      then
+        io.write_char(Stream, '[', !IO),
+        list.foldl4(json.write_array_element, Array, Last, _, Step+1, _, Stream, _, !IO),
+        json.write_indent(Step, Stream, !IO),
+        io.write_char(Stream, ']', !IO)
+      else
+        io.write_char(Stream, '[', !IO), io.write_char(Stream, ']', !IO)
+    ),
     io.nl(Stream, !IO).
 
 json.write_object(JSObject, Stream, !IO) :-
     JSObject = json.object(Object),
-    io.write_char(Stream, '{', !IO),
-    list.foldl2(json.write_object_element, Object, Stream, _, !IO),
-    io.write_char(Stream, '}', !IO),
+    ( if list.last(Object, Last)
+      then
+        io.write_char(Stream, '{', !IO),
+        list.foldl3(json.write_object_element, Object, Last, _, Stream, _, !IO),
+        io.write_char(Stream, '}', !IO)
+      else
+        io.write_char(Stream, '{', !IO), io.write_char(Stream, '}', !IO)
+    ),
     io.nl(Stream, !IO).
 
 json.write_object(JSObject, Step, Stream, !IO) :-
     JSObject = json.object(Object),
     json.write_indent(Step, Stream, !IO),
-    io.write_char(Stream, '{', !IO),
-    list.foldl3(json.write_object_element, Object, Step+1, _, Stream, _, !IO),
-    json.write_indent(Step, Stream, !IO),
-    io.write_char(Stream, '}', !IO),
+    ( if list.last(Object, Last)
+      then
+        io.write_char(Stream, '{', !IO),
+        list.foldl4(json.write_object_element, Object, Last, _, Step+1, _, Stream, _, !IO),
+        json.write_indent(Step, Stream, !IO),
+        io.write_char(Stream, '}', !IO)
+      else
+        io.write_char(Stream, '{', !IO), io.write_char(Stream, '}', !IO)
+    ),
     io.nl(Stream, !IO).
 
 json.write(Result, Stream, !IO) :-
@@ -267,14 +333,14 @@ json.char_is_breaking(':').
 
 json.is_negative_sign('-').
 
-:- pred json.get_space_end(string::in, int::in, int::out) is semidet.
+:- pred json.get_space_end(string::in, int::in, int::out) is det.
 
 json.get_space_end(String, Index, End) :-
     if string.index(String, Index, C), char_is_space(C)
     then
-        End = Index
+        json.get_space_end(String, Index+1, End)
     else
-        json.get_space_end(String, Index+1, End).
+        End = Index.
 
 :- pred json.char_digit_hex(char::in, int::out) is semidet.
 :- pred json.char_digit_dec(char::in, int::out) is semidet.
@@ -369,27 +435,39 @@ json.parse_integer(String, Index, End, Op, In, Out) :-
     ).
 
 json.parse_integer(String::in, Start::in, End::out, JSInteger::out) :-
-    ( if string.index(String, Start, '0')
-      then
-        ( if string.index(String, Start+1, 'x') ; string.index(String, Start+1, 'X')
+    ( if
+        ( if string.index(String, Start, '0')
           then
-            json.parse_integer(String, Start+2, IntEnd, json.parse_digit_hex, 0, N)
-          else
-            json.parse_integer(String, Start+1, IntEnd, json.parse_digit_oct, 0, N)
+            ( if string.index(String, Start+1, 'x') ; string.index(String, Start+1, 'X')
+              then
+                json.parse_integer(String, Start+2, IntEnd, json.parse_digit_hex, 0, N)
+              else
+                json.parse_integer(String, Start+1, IntEnd, json.parse_digit_oct, 0, N)
+            )
+          else 
+            json.parse_integer(String, Start, IntEnd, json.parse_digit_dec, 0, N)
         )
-      else 
-        json.parse_integer(String, Start, IntEnd, json.parse_digit_dec, 0, N)
-    ),
-    json.get_space_end(String, IntEnd, End),
-    JSInteger = json.integer(N).
-
+      then
+        json.get_space_end(String, IntEnd, End),
+        JSInteger = ok(json.integer(N))
+      else
+        JSInteger = json.error(0, Start, "Number", string.between(String, Start, End)),
+        End-1 = Start
+    ).
 json.parse_number(String::in, Start::in, End::out, JSNumber::out) :-
-    json.parse_integer(String, Start, WholeEnd, json.parse_digit_dec, 0, W),
-    string.index(String, WholeEnd, '.'),
-    json.parse_integer(String, WholeEnd+1, DecimalEnd, json.parse_digit_dec, 0, D),
-    M = float(D)/float(WholeEnd+1-DecimalEnd),
-    json.get_space_end(String, DecimalEnd, End),
-    JSNumber = json.number(float(W) + M).
+    ( if
+        json.parse_integer(String, Start, WholeEnd, json.parse_digit_dec, 0, W),
+        string.index(String, WholeEnd, '.'),
+        json.parse_integer(String, WholeEnd+1, DecimalEnd, json.parse_digit_dec, 0, D),
+        M = float(D)/float(WholeEnd+1-DecimalEnd)
+      then
+        json.get_space_end(String, DecimalEnd, End),
+        JSNumber = ok(json.number(float(W) + M))
+      else
+        JSNumber = json.error(0, Start, "Number", string.between(String, Start, End)),
+        End-1 = Start
+    ).
+    
 
 :- pred json.find_string_end(string::in, char::in, int::in, int::out) is semidet.
 
@@ -405,83 +483,132 @@ json.find_string_end(String::in, C::in, Start::in, End::out) :-
     ).
 
 json.parse_string(String::in, Start::in, End::out, JSString::out) :-
-
-    string.index(String, Start, C),
-    json.char_is_quote(C),
-    json.find_string_end(String, C, Start, LiteralEnd),
-    string.index(String, LiteralEnd, C),
-
-    string.between(String, Start+1, LiteralEnd, OutString),
-    JSString = json.string(OutString),
-    json.get_space_end(String, LiteralEnd+1, End).
-
-:- pred json.array_element(string::in, int::in, int::out, list(json.value)::in, list(json.value)::out) is semidet.
-
-json.array_element(String::in, Start::in, End::out, ArrayIn::in, ArrayOut::out) :-
-    json.parse_value(String, Start, TermEnd, Value),
-    
-    % Parse another term?
-
-    json.get_space_end(String, TermEnd, SpaceEnd),
-    ( if string.index(String, SpaceEnd, ',')
+    ( if string.index(String, Start, C), json.char_is_quote(C)
       then
-        json.get_space_end(String, SpaceEnd+1, NextTermStart),
-        json.array_element(String, NextTermStart, End, list.cons(Value, ArrayIn), ArrayOut)
+        ( if json.find_string_end(String, C, Start+1, LiteralEnd)
+          then
+            ( if not string.index(String, LiteralEnd, C)
+              then
+                JSString = json.error(0, LiteralEnd, "Close Quote", string.between(String, LiteralEnd, End)),
+                End-1 = LiteralEnd
+              else
+                string.between(String, Start+1, LiteralEnd, OutString),
+                JSString = ok(json.string(OutString)),
+                json.get_space_end(String, LiteralEnd+1, End)
+            )
+          else
+            JSString = json.error(0, Start, "String Literal", string.between(String, Start, End)),
+            End-1 = Start
+        )
       else
-        list.cons(Value, ArrayIn, ArrayOut),
-        End = SpaceEnd
+        JSString = json.error(0, Start, "Open Quote", string.between(String, Start, End)),
+        End-1 = Start
     ).
 
-:- pred json.object_element(string::in, int::in, int::out, list(json.property)::in, list(json.property)::out) is semidet.
+:- pred json.array_element(string::in, int::in, int::out, list(json.value)::in, json.result(list(json.value))::out) is det.
+
+json.array_element(String::in, Start::in, End::out, ArrayIn::in, ArrayOut::out) :-
+    json.parse_value(String, Start, TermEnd, ValueResult), 
+    (
+        ValueResult = json.error(L, At, E, U), ArrayOut = json.error(L, At, E, U),
+        End = TermEnd
+    ;   
+        ValueResult = ok(Value),
+        json.get_space_end(String, TermEnd, SpaceEnd),
+         % Parse another term?
+        ( if string.index(String, SpaceEnd, ',')
+          then
+            json.get_space_end(String, SpaceEnd+1, NextTermStart),
+            json.array_element(String, NextTermStart, End, ArrayIn++[Value], ArrayOut)
+          else
+            ArrayOut = ok(ArrayIn++[Value]),
+            End = SpaceEnd
+        )
+    ).
+
+:- pred json.object_element(string::in, int::in, int::out, list(json.property)::in, json.result(list(json.property))::out) is det.
 
 json.object_element(String::in, Start::in, End::out, PropertiesIn::in, PropertiesOut::out) :-
 
-    json.parse_property(String, Start, TermEnd, Property),
-
-    % Parse another property?
-
-    json.get_space_end(String, TermEnd, SpaceEnd),
-    ( if string.index(String, SpaceEnd, ',')
-      then
-        json.get_space_end(String, SpaceEnd+1, NextTermStart),
-        json.object_element(String, NextTermStart, End, list.cons(Property, PropertiesIn), PropertiesOut)
-      else
-        list.cons(Property, PropertiesIn, PropertiesOut),
-        End = SpaceEnd
+    json.parse_property(String, Start, TermEnd, PropertyResult),
+    (
+        PropertyResult = json.error(L, At, E, U), PropertiesOut = json.error(L, At, E, U),
+        End = TermEnd
+    ;   
+        PropertyResult = ok(Property),
+        json.get_space_end(String, TermEnd, SpaceEnd),
+        % Parse another property?
+        ( if string.index(String, SpaceEnd, ',')
+          then
+            json.get_space_end(String, SpaceEnd+1, NextTermStart),
+            json.object_element(String, NextTermStart, End, PropertiesIn++[Property], PropertiesOut)
+          else
+            PropertiesOut = ok(PropertiesIn++[Property]),
+            End = SpaceEnd
+        )
     ).
 
 json.parse_array(String::in, Start::in, End::out, Array::out) :-
-    string.index(String, Start, '['),
-
-    json.get_space_end(String, Start+1, TermStart),
-    ( if string.index(String, TermStart, ']')
+    ( if not string.index(String, Start, '[')
       then
-        ListEnd = TermStart,
-        ValueArray = []
+        Array = json.error(0, Start, "[", string.between(String, Start, End)),
+        End-1 = Start
       else
-        json.array_element(String, TermStart, ListEnd, [], ValueArray)
-    ),
-    Array = json.array(ValueArray),
-    json.get_space_end(String, ListEnd, ArrayEnd),
-    string.index(String, ArrayEnd, ']'),
-    json.get_space_end(String, ArrayEnd+1, End).
+        json.get_space_end(String, Start+1, TermStart),
+        ( if not string.index(String, TermStart, ']')
+          then
+            json.array_element(String, TermStart, ListEnd, [], ValueArrayResult)
+          else
+            ListEnd = TermStart,
+            ValueArrayResult = ok([])
+        ),
+        (
+            ValueArrayResult = json.error(L, At, E, U), Array = json.error(L, At, E, U),
+            End = TermStart
+        ;
+            ValueArrayResult = ok(ValueArray),
+            json.get_space_end(String, ListEnd, ArrayEnd),
+            ( if not string.index(String, ArrayEnd, ']')
+              then
+                Array = json.error(0, ArrayEnd, "]", string.between(String, ArrayEnd, End)),
+                End-1 = ArrayEnd
+              else
+                json.get_space_end(String, ArrayEnd+1, End),
+                Array = ok(json.array(ValueArray))
+            )
+        )
+    ).
 
 json.parse_object(String::in, Start::in, End::out, Object::out) :-
-    string.index(String, Start, '{'),
-    json.get_space_end(String, Start+1, TermStart),
-    ( if string.index(String, TermStart, '}')
+    ( if not string.index(String, Start, '{')
       then
-        ListEnd = TermStart,
-        Properties = []
+        Object = json.error(0, Start, "{", string.between(String, Start, End)),
+        End-1 = Start
       else
-        json.object_element(String, TermStart, ListEnd, [], Properties)
-    ),
-    Object = json.object(Properties),
-
-    json.get_space_end(String, ListEnd, CloseBracket),
-    string.index(String, CloseBracket, '}'),
-    json.get_space_end(String, CloseBracket+1, End).
-
+        json.get_space_end(String, Start+1, TermStart),
+        ( if string.index(String, TermStart, '}')
+          then
+            ListEnd = TermStart,
+            PropertiesResult = ok([])
+          else
+            json.object_element(String, TermStart, ListEnd, [], PropertiesResult)
+        ),
+        (
+            PropertiesResult = json.error(L, At, E, U), Object = json.error(L, At, E, U),
+            End = TermStart
+        ;
+            PropertiesResult = ok(Properties),
+            json.get_space_end(String, ListEnd, CloseBracket),
+            ( if string.index(String, CloseBracket, '}')
+              then
+                Object = ok(json.object(Properties)),
+                json.get_space_end(String, CloseBracket+1, End)
+              else
+                Object = json.error(0, CloseBracket, "}", string.between(String, CloseBracket, End)),
+                End-1 = CloseBracket
+            )
+        )
+    ).
 
 
 :- pred json.char_is_array_start(char::in) is semidet.
@@ -491,16 +618,31 @@ json.char_is_array_start('[').
 json.char_is_object_start('{').
 
 json.parse_property(String::in, Start::in, End::out, Property::out) :-
-    json.parse_string(String, Start, NameEnd, Name),
-    json.get_space_end(String, NameEnd, DelimiterStart),
-    string.index(String, DelimiterStart, ':'),
-    json.get_space_end(String, DelimiterStart+1, TermStart),
-    json.parse_value(String, TermStart, TermEnd, Value),
-    Property = json.property(Name, Value),
-
-    json.get_space_end(String, TermEnd, End).
+    json.parse_string(String, Start, NameEnd, NameResult),
+    (
+        NameResult = json.error(L, At, E, U), Property = json.error(L, At, E, U),
+        End = NameEnd
+    ;
+        NameResult = ok(Name),
+        json.get_space_end(String, NameEnd, DelimiterStart),
+        ( if not string.index(String, DelimiterStart, ':')
+          then
+            Property = json.error(0, DelimiterStart, ":", string.between(String, DelimiterStart, End)),
+            End-1 = DelimiterStart
+          else
+            json.get_space_end(String, DelimiterStart+1, TermStart),
+            json.parse_value(String, TermStart, TermEnd, ValueResult),
+            (
+                ValueResult = json.error(L, At, E, U), Property = json.error(L, At, E, U),
+                End = TermEnd
+            ;
+                ValueResult = ok(Value), Property = ok(json.property(Name, Value)),
+                json.get_space_end(String, TermEnd, End)
+            )
+       )
+    ).
     
-:- pred json.number_literal(string::in, int::in, int::out, json.value::out) is semidet.
+:- pred json.number_literal(string::in, int::in, int::out, json.result(json.value)::out) is det.
 
 json.number_literal(String::in, Start::in, End::out, Value::out) :-
     ( if string.index(String, 0, '-')
@@ -511,60 +653,143 @@ json.number_literal(String::in, Start::in, End::out, Value::out) :-
         C = 1,
         TermStart = Start
     ),
-    ( if json.parse_number(String, TermStart, T, json.number(N))
+    ( if json.parse_number(String, TermStart, T, ok(json.number(N)))
       then
-        Value = json.number(N * float(C)),
-        TermEnd = T
+        Value = ok(json.number(N * float(C))),
+        json.get_space_end(String, T, End)
+      else if json.parse_integer(String, TermStart, T, ok(json.integer(I)))
+      then
+        Value = ok(json.integer(I * C)),
+        json.get_space_end(String, T, End)
       else
-        json.parse_integer(String, TermStart, TermEnd, json.integer(I)),
-        Value = json.integer(I * C)
-    ),    
-    json.get_space_end(String, TermEnd, End).
+        Value = json.error(0, Start, "Number Literal", string.between(String, Start, End)),
+        End-1 = Start
+    ).
 
-json.parse_value(String::in, Start::in, End::out, Value::out) :-
-    string.index(String, Start, C),
-    ( if json.is_negative_sign(C) ; json.char_digit_dec(C, _)
-      then 
-        json.number_literal(String, Start, TermEnd, Value)
-      else if json.char_is_quote(C)
-      then % String
-        json.parse_string(String, Start, TermEnd, json.string(S)),
-        Value = json.string(S)
-      else if json.char_is_array_start(C)
-      then % Array
-        json.parse_array(String, Start, TermEnd, json.array(A)),
-        Value = json.array(A)
-      else if json.char_is_object_start(C)
-      then % Object
-        json.parse_object(String, Start, TermEnd, json.object(O)),
-        Value = json.object(O)
-      else if string.between(String, Start, Start+4, "true")
-      then % Boolean literal "true"
-        Value = json.boolean(yes),
-        TermEnd-4 = Start
-      else if string.between(String, Start, Start+5, "false")
-      then % Boolean literal "false"
-        Value = json.boolean(no),
-        TermEnd-5 = Start
-      else if string.between(String, Start, Start+4, "null")
-      then % Object literal "null"
-        Value = null,
-        TermEnd-4 = Start
+json.parse_value(String::in, Start::in, End::out, Result::out) :-
+    ( if string.index(String, Start, C)
+      then
+        ( if json.is_negative_sign(C) ; json.char_digit_dec(C, _)
+          then 
+            json.number_literal(String, Start, TermEnd, Value)
+          else if json.char_is_quote(C)
+          then % String
+            json.parse_string(String, Start, TermEnd, S),
+            (
+                S = ok(json.string(T)), Value = ok(json.string(T))
+            ;
+                S = json.error(L1, At1, E1, U1), Value = json.error(L1, At1, E1, U1)
+            )
+          else if json.char_is_array_start(C)
+          then % Array
+            json.parse_array(String, Start, TermEnd, A),
+            (
+                A = ok(json.array(R)), Value = ok(json.array(R))
+            ;
+                A = json.error(L2, At2, E2, U2), Value = json.error(L2, At2, E2, U2)
+            )
+          else if json.char_is_object_start(C)
+          then % Object
+            json.parse_object(String, Start, TermEnd, O),
+            (
+                O = ok(json.object(J)), Value = ok(json.object(J))
+            ;
+                O = json.error(L3, At3, E3, U3), Value = json.error(L3, At3, E3, U3)
+            )
+          else if string.between(String, Start, Start+4, "true")
+          then % Boolean literal "true"
+            Value = ok(json.boolean(yes)),
+            TermEnd-4 = Start
+          else if string.between(String, Start, Start+5, "false")
+          then % Boolean literal "false"
+            Value = ok(json.boolean(no)),
+            TermEnd-5 = Start
+          else if string.between(String, Start, Start+4, "null")
+          then % Object literal "null"
+            Value = ok(null),
+            TermEnd-4 = Start
+          else
+            TermEnd-1 = Start,
+            Value = ok(null)
+        ),
+        (
+            Value = ok(K), Result = ok(K)
+        ;
+            Value = json.error(L4, At4, E4, U4), Result = json.error(L4, At4, E4, U4)
+        ),
+        json.get_space_end(String, TermEnd, End)
       else
-        TermEnd-1 = Start,
-        Value = null
-    ),
-    json.get_space_end(String, TermEnd, End).
+        % Line really IS zero here.
+        Result = json.error(0, Start, "", "End of input"),
+        End-1 = Start
+    ).
 
 json.parse(String::in, Result::out) :-
-    json.parse_value(String, 0, _, Value),
+    json.parse_value(String, 0, _, ValueResult),
     (
-        Value = json.array(A),
-        Result = json.array(A)
+        ValueResult = json.error(L, At, E, U), Result = json.error(L, At, E, U)
     ;
-        Value = json.object(A),
-        Result = json.object(A)
-    ;
-        Value = null,
-        Result = null
+        ValueResult = ok(Value),
+        (
+            Value = json.array(A),
+            Result = ok(json.array(A))
+        ;
+            Value = json.object(A),
+            Result = ok(json.object(A))
+        ;
+            Value = null,
+            Result = ok(null)
+        ; 
+            (
+                Value = json.boolean(_)
+            ;
+                Value = json.number(_)
+            ;
+                Value = json.integer(_)
+            ;
+                Value = json.string(_)
+            ),
+            Result = json.error(0, 0, "Object or Array", "")
+        )
     ).
+
+main(!IO) :-
+    open_input("ops.json", InResult, !IO),
+    open_output("new_ops.json", OutResult, !IO),
+    ( if InResult = ok(InStream), OutResult = ok(OutStream)
+      then
+        io.read_file_as_string(InStream, StringResult, !IO),
+        ( if StringResult = ok(String)
+          then
+            json.parse(String, Result),
+            (
+                Result = ok(Tree),
+                io.write_string("Parse successful for ops.json\n", !IO),
+                json.write(Tree, OutStream, !IO)
+            ;
+                Result = error(L, At, E, U),
+                io.write_string("Could not parse file ops.json\n", !IO),
+                io.format("Error at line %i, total character %i: Expected %s, not %s\n", [i(L), i(At), s(E), s(U)], !IO)
+            )
+          else
+            io.write_string("Could not read file ops.json\n", !IO)
+        ),
+        close_input(InStream, !IO),
+        close_output(OutStream, !IO)
+      else
+        (
+            InResult = ok(_)
+        ;
+            InResult = error(Err1),
+            io.format("IO Error with input stream ops.json\n%s\n", [s(error_message(Err1))], !IO)
+        ),
+        (
+            OutResult = ok(_)
+        ;
+            OutResult = error(Err2), 
+            io.format("IO Error with output stream new_ops.json\n%s\n", [s(error_message(Err2))], !IO)
+        )
+    ).
+      
+    
+    
