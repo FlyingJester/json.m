@@ -162,70 +162,45 @@ json.write_string(JSString, Stream, !IO) :-
     io.write_string(Stream, String, !IO),
     io.write_char(Stream, '"', !IO).
 
-:- pred json.write_array_element(json.value::in, json.value::in, json.value::out, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
-:- pred json.write_array_element(json.value::in, json.value::in, json.value::out, int::in, int::out, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
+:- pred json.write_array_element(json.value::in, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
+:- pred json.write_array_element(json.value::in, int::in, int::out, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
 
-json.write_array_element(Value, Last, Z, Stream, Out, !IO) :-
+json.write_array_element(Value, Stream, Out, !IO) :-
     json.write_value(Value, Stream, !IO),
-    ( if Value=Last
-      then
-        Z=Value,
-        io.write_char(Stream, ' ', !IO)
-      else
-        Z=Last,
-        io.write_char(Stream, ',', !IO)
-    ),
+    io.write_char(Stream, ',', !IO),
     Out = Stream.
 
-json.write_array_element(Value, Last, Z, Indent, IndentOut, Stream, StreamOut, !IO) :-
+json.write_array_element(Value, Indent, IndentOut, Stream, StreamOut, !IO) :-
     json.write_indent(Indent, Stream, !IO),
     json.write_value(Value, Stream, !IO),
-    ( if Value=Last
-      then
-        Z=Value
-      else
-        Z=Last,
-        io.write_char(Stream, ',', !IO)
-    ),
+    io.write_char(Stream, ',', !IO),
     io.nl(Stream, !IO),
     StreamOut = Stream,
     IndentOut = Indent.
 
-:- pred json.write_object_element(json.property::in, json.property::in, json.property::out, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
-:- pred json.write_object_element(json.property::in, json.property::in, json.property::out, int::in, int::out, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
+:- pred json.write_object_element(json.property::in, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
+:- pred json.write_object_element(json.property::in, int::in, int::out, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
 
-json.write_object_element(Property, Last, Z, Stream, Out, !IO) :-
+json.write_object_element(Property,Stream, Out, !IO) :-
     json.write_property(Property, Stream, !IO),
-    ( if Property=Last
-      then
-        Z=Property,
-        io.write_char(Stream, ' ', !IO)
-      else
-        Z=Last,
-        io.write_char(Stream, ',', !IO)
-    ),
-    Out = Stream.
+    io.write_char(Stream, ',', !IO),
+     Out = Stream.
 
-json.write_object_element(Property, Last, Z, Indent, IndentOut, Stream, StreamOut, !IO) :-
+json.write_object_element(Property, Indent, IndentOut, Stream, StreamOut, !IO) :-
     json.write_indent(Indent, Stream, !IO),
     json.write_property(Property, Stream, !IO),
-    ( if Property=Last
-      then
-        Z=Property
-      else
-        Z=Last,
-        io.write_char(Stream, ',', !IO)
-    ),
+    io.write_char(Stream, ',', !IO),
     io.nl(Stream, !IO),
     StreamOut = Stream,
     IndentOut = Indent.
 
 json.write_array(JSArray, Stream, !IO) :-
     JSArray = json.array(Array),
-    ( if list.last(Array, Last)
+    ( if list.split_last(Array, NewArray, Last)
       then
         io.write_char(Stream, '[', !IO),
-        list.foldl3(json.write_array_element, Array, Last, _, Stream, _, !IO),
+        list.foldl2(json.write_array_element, NewArray, Stream, _, !IO),
+        json.write_value(Last, Stream, !IO),
         io.write_char(Stream, ']', !IO)
       else
         io.write_char(Stream, '[', !IO), io.write_char(Stream, ']', !IO)
@@ -235,10 +210,12 @@ json.write_array(JSArray, Stream, !IO) :-
 json.write_array(JSArray, Step, Stream, !IO) :-
     JSArray = json.array(Array),
     json.write_indent(Step, Stream, !IO),
-    ( if list.last(Array, Last)
+    ( if list.split_last(Array, NewArray, Last)
       then
         io.write_char(Stream, '[', !IO),
-        list.foldl4(json.write_array_element, Array, Last, _, Step+1, _, Stream, _, !IO),
+        list.foldl3(json.write_array_element, NewArray, Step+1, _, Stream, _, !IO),
+        json.write_indent(Step, Stream, !IO),
+        json.write_value(Last, Stream, !IO),
         json.write_indent(Step, Stream, !IO),
         io.write_char(Stream, ']', !IO)
       else
@@ -248,10 +225,11 @@ json.write_array(JSArray, Step, Stream, !IO) :-
 
 json.write_object(JSObject, Stream, !IO) :-
     JSObject = json.object(Object),
-    ( if list.last(Object, Last)
+    ( if list.split_last(Object, NewObject, Last)
       then
         io.write_char(Stream, '{', !IO),
-        list.foldl3(json.write_object_element, Object, Last, _, Stream, _, !IO),
+        list.foldl2(json.write_object_element, NewObject, Stream, _, !IO),
+        json.write_property(Last, Stream, !IO),
         io.write_char(Stream, '}', !IO)
       else
         io.write_char(Stream, '{', !IO), io.write_char(Stream, '}', !IO)
@@ -261,15 +239,18 @@ json.write_object(JSObject, Stream, !IO) :-
 json.write_object(JSObject, Step, Stream, !IO) :-
     JSObject = json.object(Object),
     json.write_indent(Step, Stream, !IO),
-    ( if list.last(Object, Last)
+    ( if list.split_last(Object, NewObject, Last)
       then
         io.write_char(Stream, '{', !IO),
-        list.foldl4(json.write_object_element, Object, Last, _, Step+1, _, Stream, _, !IO),
+        list.foldl3(json.write_object_element, NewObject, Step+1, _, Stream, _, !IO),
+        json.write_indent(Step, Stream, !IO),
+        json.write_property(Last, Stream, !IO),
         json.write_indent(Step, Stream, !IO),
         io.write_char(Stream, '}', !IO)
       else
         io.write_char(Stream, '{', !IO), io.write_char(Stream, '}', !IO)
     ),
+    io.write_char(Stream, ',', !IO),
     io.nl(Stream, !IO).
 
 json.write(Result, Stream, !IO) :-
@@ -751,8 +732,8 @@ json.parse(String::in, Result::out) :-
     ).
 
 main(!IO) :-
-    open_input("instruments.json", InResult, !IO),
-    open_output("new_instruments.json", OutResult, !IO),
+    open_input("new_instruments.json", InResult, !IO),
+    open_output("new_new_instruments.json", OutResult, !IO),
     ( if InResult = ok(InStream), OutResult = ok(OutStream)
       then
         io.read_file_as_string(InStream, StringResult, !IO),
