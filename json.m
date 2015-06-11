@@ -11,46 +11,33 @@
 
 % `null' is technically an object, but it is MUCH simpler to implement
 %  it as a possible state of json.value
-:- type json.integer ---> json.integer(int).
-:- type json.number  ---> json.number(float).
-:- type json.string  ---> json.string(string).
-:- type json.boolean ---> json.boolean(bool).
-:- type json.array   ---> json.array(list(json.value)).
-:- type json.object  ---> json.object(list(json.property)).
+:- type json.integer ---> json.integer(integer_val::int).
+:- type json.number  ---> json.number(number_val::float).
+:- type json.string  ---> json.string(string_val::string).
+:- type json.boolean ---> json.boolean(boolean_val::bool).
+:- type json.array   ---> json.array(array_val::list(json.value)).
+:- type json.object  ---> json.object(object_val::list(json.property)).
 
 :- type json.property ---> json.property(name::json.string, val::json.value).
 
 :- type json.value --->
     null
-    ; json.object(list(json.property))
-    ; json.array(list(json.value))
-    ; json.integer(int)
-    ; json.number(float)
-    ; json.string(string)
-    ; json.boolean(bool).
+    ; json.object(value_object::list(json.property))
+    ; json.array(value_array::list(json.value))
+    ; json.integer(value_integer::int)
+    ; json.number(value_number::float)
+    ; json.string(value_string::string)
+    ; json.boolean(value_boolean::bool).
 
 % TODO: Is null really ok?
 :- type json.root --->
     null
-    ; json.object(list(json.property))
-    ; json.array(list(json.value)).
+    ; json.object(root_object::list(json.property))
+    ; json.array(root_array::list(json.value)).
 
 :- type json.error ---> json.error(line::int, expected::string, unexpected::string).
 
-:- type json.result(T) ---> ok(T) ; json.error(int, int, string, string).
-
-% Quick and Dirty Parsing
-%:- pred json.parse_value(string::in, int::in, int::out, json.value::out) is semidet.
-%:- pred json.parse_property(string::in, int::in, int::out, json.property::out) is semidet.
-
-%:- pred json.parse_integer(string::in, int::in, int::out, json.integer::out) is semidet.
-%:- pred json.parse_number(string::in, int::in, int::out, json.number::out) is semidet.
-%:- pred json.parse_string(string::in, int::in, int::out, json.string::out) is semidet.
-
-%:- pred json.parse_array(string::in, int::in, int::out, json.array::out) is semidet.
-%:- pred json.parse_object(string::in, int::in, int::out, json.object::out) is semidet.
-
-%:- pred json.parse(string::in, json.result::out) is semidet.
+:- type json.result(T) ---> ok(ok_field::T) ; json.error(line_number::int, char_number::int, expected_string::string, unexpected_string::string).
 
 % Parsing
 
@@ -65,8 +52,6 @@
 :- pred json.parse_object(string::in, int::in, int::out, int::in, json.result(json.object)::out) is det.
 
 :- pred json.parse(string::in, json.result(json.root)::out) is det.
-
-
 
 % Writing
 
@@ -98,7 +83,41 @@
 % Implementation
 :- implementation.
 
-:- import_module stream.string_writer.
+:- pragma foreign_export("Java", json.parse_value(in, in, out, in, out), "ParseValue").
+:- pragma foreign_export("C", json.parse_value(in, in, out, in, out), "ParseValue").
+:- pragma foreign_export("Java", json.parse_property(in, in, out, in, out), "ParseProperty").
+:- pragma foreign_export("C", json.parse_property(in, in, out, in, out), "ParseProperty").
+:- pragma foreign_export("Java", json.parse_integer(in, in, out, in, out), "ParseInteger").
+:- pragma foreign_export("C", json.parse_integer(in, in, out, in, out), "ParseInteger").
+:- pragma foreign_export("Java", json.parse_number(in, in, out, in, out), "ParseFloat").
+:- pragma foreign_export("C", json.parse_number(in, in, out, in, out), "ParseFloat").
+:- pragma foreign_export("Java", json.parse_string(in, in, out, in, out), "ParseString").
+:- pragma foreign_export("C", json.parse_string(in, in, out, in, out), "ParseString").
+:- pragma foreign_export("Java", json.parse_object(in, in, out, in, out), "ParseObject").
+:- pragma foreign_export("C", json.parse_object(in, in, out, in, out), "ParseObject").
+:- pragma foreign_export("Java", json.parse_array(in, in, out, in, out), "ParseArray").
+:- pragma foreign_export("C", json.parse_array(in, in, out, in, out), "ParseArray").
+:- pragma foreign_export("Java", json.parse(in, out), "ParseRoot").
+:- pragma foreign_export("C", json.parse(in, out), "ParseRoot").
+
+:- pragma foreign_export("Java", json.write_value(in, in, di, uo), "WriteValue").
+:- pragma foreign_export("C", json.write_value(in, in, di, uo), "WriteValue").
+:- pragma foreign_export("Java", json.write_property(in, in, di, uo), "WriteProperty").
+:- pragma foreign_export("C", json.write_property(in, in, di, uo), "WriteProperty").
+:- pragma foreign_export("Java", json.write_integer(in, in, di, uo), "WriteInteger").
+:- pragma foreign_export("C", json.write_integer(in, in, di, uo), "WriteInteger").
+:- pragma foreign_export("Java", json.write_number(in, in, di, uo), "WriteFloat").
+:- pragma foreign_export("C", json.write_number(in, in, di, uo), "WriteFloat").
+:- pragma foreign_export("Java", json.write_string(in, in, di, uo), "WriteString").
+:- pragma foreign_export("C", json.write_string(in, in, di, uo), "WriteString").
+:- pragma foreign_export("Java", json.write_object(in, in, di, uo), "WriteObject").
+:- pragma foreign_export("C", json.write_object(in, in, di, uo), "WriteObject").
+:- pragma foreign_export("Java", json.write_array(in, in, di, uo), "WriteArray").
+:- pragma foreign_export("C", json.write_array(in, in, di, uo), "WriteArray").
+:- pragma foreign_export("Java", json.write(in, in, di, uo), "WriteRoot").
+:- pragma foreign_export("C", json.write(in, in, di, uo), "WriteRoot").
+
+%:- import_module stream.string_writer.
 
 :- pred json.write_indent(int::in, io.output_stream::in, io::di, io::uo) is det.
 
