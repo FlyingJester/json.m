@@ -39,6 +39,23 @@
 
 :- type json.result(T) ---> ok(ok_field::T) ; json.error(line_number::int, char_number::int, expected_string::string, unexpected_string::string).
 
+% Finding values
+
+:- pred json.find_object(json.object::in, string::in, json.object::out) is semidet.
+:- pred json.find_array(json.object::in, string::in, json.array::out) is semidet.
+:- pred json.find_integer(json.object::in, string::in, json.integer::out) is semidet.
+:- pred json.find_number(json.object::in, string::in, json.number::out) is semidet.
+:- pred json.find_string(json.object::in, string::in, json.string::out) is semidet.
+:- pred json.find_boolean(json.object::in, string::in, json.boolean::out) is semidet.
+:- pred json.find_null(json.object::in, string::in) is semidet.
+
+% Less useful, but still useful sometimes. Notably they are used to implement the other find_* predicates
+:- pred json.find_value(json.object::in, string::in, json.value::out) is semidet.
+:- pred json.find_value_list(list(json.property)::in, string::in, json.value::out) is semidet.
+
+:- pred json.find_property(json.object::in, string::in, json.property::out) is semidet.
+:- pred json.find_property_list(list(json.property)::in, string::in, json.property::out) is semidet.
+
 % Parsing
 
 :- pred json.parse_value(string::in, int::in, int::out, int::in, json.result(json.value)::out) is det.
@@ -61,63 +78,147 @@
 % Faster and simpler, but not as nice looking.
 % Invoked using write_pretty, as opposed to write
 :- pred json.write_value(json.value::in, io.output_stream::in, io::di, io::uo) is det.
+:- pred json.write_value(json.value::in, string::uo) is det.
 :- pred json.write_property(json.property::in, io.output_stream::in, io::di, io::uo) is det.
+:- pred json.write_property(json.property::in, string::uo) is det.
 
 :- pred json.write_integer(json.integer::in, io.output_stream::in, io::di, io::uo) is det.
+:- pred json.write_integer(json.integer::in, string::uo) is det.
+
 :- pred json.write_number(json.number::in, io.output_stream::in, io::di, io::uo) is det.
+:- pred json.write_number(json.number::in, string::uo) is det.
 
 :- pred json.write_string(json.string::in, io.output_stream::in, io::di, io::uo) is det.
+:- pred json.write_string(json.string::in, string::uo) is det.
 
 :- pred json.write_array(json.array::in, io.output_stream::in, io::di, io::uo) is det.
+:- pred json.write_array(json.array::in, string::uo) is det.
 :- pred json.write_array(json.array::in, int::in, io.output_stream::in, io::di, io::uo) is det.
+:- pred json.write_array(json.array::in, int::in, string::uo) is det.
 :- pred json.write_object(json.object::in, io.output_stream::in, io::di, io::uo) is det.
+:- pred json.write_object(json.object::in, string::uo) is det.
 :- pred json.write_object(json.object::in, int::in, io.output_stream::in, io::di, io::uo) is det.
+:- pred json.write_object(json.object::in, int::in, string::uo) is det.
 
 :- pred json.write(json.root::in, io.output_stream::in, io::di, io::uo) is det.
+:- pred json.write(json.root::in, string::uo) is det.
 :- pred json.write_pretty(json.root::in, io.output_stream::in, io::di, io::uo) is det.
-
-% For testing purposes
-:- pred main(io::di, io::uo) is det.
-
+:- pred json.write_pretty(json.root::in, string::uo) is det.
 
 % Implementation
 :- implementation.
 
 :- pragma foreign_export("Java", json.parse_value(in, in, out, in, out), "ParseValue").
-:- pragma foreign_export("C", json.parse_value(in, in, out, in, out), "ParseValue").
+:- pragma foreign_export("C",    json.parse_value(in, in, out, in, out), "ParseValue").
 :- pragma foreign_export("Java", json.parse_property(in, in, out, in, out), "ParseProperty").
-:- pragma foreign_export("C", json.parse_property(in, in, out, in, out), "ParseProperty").
+:- pragma foreign_export("C",    json.parse_property(in, in, out, in, out), "ParseProperty").
 :- pragma foreign_export("Java", json.parse_integer(in, in, out, in, out), "ParseInteger").
-:- pragma foreign_export("C", json.parse_integer(in, in, out, in, out), "ParseInteger").
+:- pragma foreign_export("C",    json.parse_integer(in, in, out, in, out), "ParseInteger").
 :- pragma foreign_export("Java", json.parse_number(in, in, out, in, out), "ParseFloat").
-:- pragma foreign_export("C", json.parse_number(in, in, out, in, out), "ParseFloat").
+:- pragma foreign_export("C",    json.parse_number(in, in, out, in, out), "ParseFloat").
 :- pragma foreign_export("Java", json.parse_string(in, in, out, in, out), "ParseString").
-:- pragma foreign_export("C", json.parse_string(in, in, out, in, out), "ParseString").
+:- pragma foreign_export("C",    json.parse_string(in, in, out, in, out), "ParseString").
 :- pragma foreign_export("Java", json.parse_object(in, in, out, in, out), "ParseObject").
-:- pragma foreign_export("C", json.parse_object(in, in, out, in, out), "ParseObject").
+:- pragma foreign_export("C",    json.parse_object(in, in, out, in, out), "ParseObject").
 :- pragma foreign_export("Java", json.parse_array(in, in, out, in, out), "ParseArray").
-:- pragma foreign_export("C", json.parse_array(in, in, out, in, out), "ParseArray").
+:- pragma foreign_export("C",    json.parse_array(in, in, out, in, out), "ParseArray").
 :- pragma foreign_export("Java", json.parse(in, out), "ParseRoot").
-:- pragma foreign_export("C", json.parse(in, out), "ParseRoot").
+:- pragma foreign_export("C",    json.parse(in, out), "ParseRoot").
 
 :- pragma foreign_export("Java", json.write_value(in, in, di, uo), "WriteValue").
-:- pragma foreign_export("C", json.write_value(in, in, di, uo), "WriteValue").
+:- pragma foreign_export("C",    json.write_value(in, in, di, uo), "WriteValueIO").
+:- pragma foreign_export("Java", json.write_value(in, uo), "WriteValue").
+:- pragma foreign_export("C",    json.write_value(in, uo), "WriteValueStr").
 :- pragma foreign_export("Java", json.write_property(in, in, di, uo), "WriteProperty").
-:- pragma foreign_export("C", json.write_property(in, in, di, uo), "WriteProperty").
+:- pragma foreign_export("C",    json.write_property(in, in, di, uo), "WritePropertyIO").
+:- pragma foreign_export("Java", json.write_property(in, uo), "WriteProperty").
+:- pragma foreign_export("C",    json.write_property(in, uo), "WritePropertyStr").
 :- pragma foreign_export("Java", json.write_integer(in, in, di, uo), "WriteInteger").
-:- pragma foreign_export("C", json.write_integer(in, in, di, uo), "WriteInteger").
+:- pragma foreign_export("C",    json.write_integer(in, in, di, uo), "WriteIntegerIO").
+:- pragma foreign_export("Java", json.write_integer(in, uo), "WriteInteger").
+:- pragma foreign_export("C",    json.write_integer(in, uo), "WriteIntegerStr").
 :- pragma foreign_export("Java", json.write_number(in, in, di, uo), "WriteFloat").
-:- pragma foreign_export("C", json.write_number(in, in, di, uo), "WriteFloat").
+:- pragma foreign_export("C",    json.write_number(in, in, di, uo), "WriteFloatIO").
+:- pragma foreign_export("Java", json.write_number(in, uo), "WriteFloat").
+:- pragma foreign_export("C",    json.write_number(in, uo), "WriteFloatStr").
 :- pragma foreign_export("Java", json.write_string(in, in, di, uo), "WriteString").
-:- pragma foreign_export("C", json.write_string(in, in, di, uo), "WriteString").
+:- pragma foreign_export("C",    json.write_string(in, in, di, uo), "WriteStringIO").
+:- pragma foreign_export("Java", json.write_string(in, uo), "WriteString").
+:- pragma foreign_export("C",    json.write_string(in, uo), "WriteStringStr").
 :- pragma foreign_export("Java", json.write_object(in, in, di, uo), "WriteObject").
-:- pragma foreign_export("C", json.write_object(in, in, di, uo), "WriteObject").
+:- pragma foreign_export("C",    json.write_object(in, in, di, uo), "WriteObjectIO").
+:- pragma foreign_export("Java", json.write_object(in, uo), "WriteObject").
+:- pragma foreign_export("C",    json.write_object(in, uo), "WriteObjectStr").
 :- pragma foreign_export("Java", json.write_array(in, in, di, uo), "WriteArray").
-:- pragma foreign_export("C", json.write_array(in, in, di, uo), "WriteArray").
+:- pragma foreign_export("C",    json.write_array(in, in, di, uo), "WriteArrayIO").
+:- pragma foreign_export("Java", json.write_array(in, uo), "WriteArray").
+:- pragma foreign_export("C",    json.write_array(in, uo), "WriteArrayStr").
 :- pragma foreign_export("Java", json.write(in, in, di, uo), "WriteRoot").
-:- pragma foreign_export("C", json.write(in, in, di, uo), "WriteRoot").
+:- pragma foreign_export("C",    json.write(in, in, di, uo), "WriteRootIO").
+:- pragma foreign_export("Java", json.write(in, uo), "WriteRoot").
+:- pragma foreign_export("C",    json.write(in, uo), "WriteRootStr").
 
-%:- import_module stream.string_writer.
+:- pragma foreign_export("Java", json.find_object(in, in, out), "FindObject").
+:- pragma foreign_export("C",    json.find_object(in, in, out), "FindObject").
+:- pragma foreign_export("Java", json.find_array(in, in, out), "FindArray").
+:- pragma foreign_export("C",    json.find_array(in, in, out), "FindArray").
+:- pragma foreign_export("Java", json.find_integer(in, in, out), "FindInteger").
+:- pragma foreign_export("C",    json.find_integer(in, in, out), "FindInteger").
+:- pragma foreign_export("Java", json.find_number(in, in, out), "FindNumber").
+:- pragma foreign_export("C",    json.find_number(in, in, out), "FindNumber").
+:- pragma foreign_export("Java", json.find_string(in, in, out), "FindString").
+:- pragma foreign_export("C",    json.find_string(in, in, out), "FindString").
+:- pragma foreign_export("Java", json.find_boolean(in, in, out), "FindBoolean").
+:- pragma foreign_export("C",    json.find_boolean(in, in, out), "FindBoolean").
+:- pragma foreign_export("Java", json.find_null(in, in), "FindNull").
+:- pragma foreign_export("C",    json.find_null(in, in), "FindNull").
+:- pragma foreign_export("Java", json.find_value(in, in, out), "FindValue").
+:- pragma foreign_export("C",    json.find_value(in, in, out), "FindValue").
+:- pragma foreign_export("Java", json.find_property(in, in, out), "FindProperty").
+:- pragma foreign_export("C",    json.find_property(in, in, out), "FindProperty").
+
+% Finding values
+
+json.find_object(Object, Name, json.object(O)) :-
+    json.find_value(Object, Name, json.object(O)).
+    
+json.find_array(Object, Name, json.array(A)) :-
+    json.find_value(Object, Name, json.array(A)).
+
+json.find_integer(Object, Name, json.integer(I)) :-
+    json.find_value(Object, Name, json.integer(I)).
+
+json.find_number(Object, Name, json.number(N)) :-
+    json.find_value(Object, Name, json.number(N)).
+
+json.find_string(Object, Name, json.string(S)) :-
+    json.find_value(Object, Name, json.string(S)).
+
+json.find_boolean(Object, Name, json.boolean(B)) :-
+    json.find_value(Object, Name, json.boolean(B)).
+
+json.find_null(Object, Name) :-
+    json.find_value(Object, Name, null).
+
+json.find_value(json.object(Properties), Name, Value) :-
+    json.find_value_list(Properties, Name, Value).
+
+% Intentionally fails on an empty list. That means we didn't find the value.
+json.find_value_list([Element | List], Name, Value) :-
+    if Element ^ name = json.string(Name)
+    then Value = Element ^ val
+    else json.find_value_list(List, Name, Value).
+
+json.find_property(json.object(Properties), Name, Property) :-
+    json.find_property_list(Properties, Name, Property).
+
+% Intentionally fails on an empty list. That means we didn't find the value.
+json.find_property_list([Element | List], Name, Property) :-
+    if Element ^ name = json.string(Name)
+    then Property = Element
+    else json.find_property_list(List, Name, Property).
+
+% Writing functions
 
 :- pred json.write_indent(int::in, io.output_stream::in, io::di, io::uo) is det.
 
@@ -161,19 +262,60 @@ json.write_value(Value, Stream, !IO) :-
 
     ).
 
+
+json.write_value(Value, String) :-
+    (
+        Value = null,
+        String = "null"
+    ;
+        Value = json.integer(Integer),
+        json.write_integer(json.integer(Integer), String)
+    ;
+        Value = json.number(Float),
+        json.write_number(json.number(Float), String)
+    ;
+        Value = json.string(S),
+        json.write_string(json.string(S), String)
+    ;
+        Value = json.array(Array),
+        json.write_array(json.array(Array), String)
+    ;
+        Value = json.object(Object),
+        json.write_object(json.object(Object), String)
+    ;
+        Value = json.boolean(Bool),
+        (
+            Bool = yes,
+            NString = "tru"
+        ;
+            Bool = no,
+            NString = "fals"
+        ),
+        String = NString ++ "e"
+    ).
+
 json.write_property(Property, Stream, !IO) :-
     json.write_string(Property ^ name, Stream, !IO),
     io.write_char(Stream, ':', !IO),
     json.write_value(Property ^ val, Stream, !IO),
     io.nl(Stream, !IO).
+    
+json.write_property(Property, String) :-
+    json.write_string(Property ^ name, NameString),
+    json.write_value(Property ^ val, ValString),
+    String = NameString ++ ":" ++ ValString ++ "\n".
 
 json.write_integer(JSInteger, Stream, !IO) :-
     JSInteger = json.integer(I),
     io.write_int(Stream, I, !IO).
 
+json.write_integer(json.integer(I), string.from_int(I)).
+
 json.write_number(JSNumber, Stream, !IO) :-
     JSNumber = json.number(N),
     io.write_float(Stream, N, !IO).
+
+json.write_number(json.number(F), string.from_float(F)).
 
 json.write_string(JSString, Stream, !IO) :-
     JSString = json.string(String),
@@ -181,13 +323,22 @@ json.write_string(JSString, Stream, !IO) :-
     io.write_string(Stream, String, !IO),
     io.write_char(Stream, '"', !IO).
 
+json.write_string(json.string(String), "\"" ++ String ++ "\"").
+
 :- pred json.write_array_element(json.value::in, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
 :- pred json.write_array_element(json.value::in, int::in, int::out, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
+
+:- pred json.write_array_element_str(json.value::in, string::in, string::out) is det.
+:- pred json.write_array_element_str(json.value::in, int::in, int::out, string::in, string::out) is det.
 
 json.write_array_element(Value, Stream, Out, !IO) :-
     json.write_value(Value, Stream, !IO),
     io.write_char(Stream, ',', !IO),
     Out = Stream.
+
+json.write_array_element_str(Value, StringIn, StringOut) :-
+    json.write_value(Value, ValString),
+    StringOut = StringIn ++ ValString ++ ",".
 
 json.write_array_element(Value, Indent, IndentOut, Stream, StreamOut, !IO) :-
     json.write_indent(Indent, Stream, !IO),
@@ -196,14 +347,26 @@ json.write_array_element(Value, Indent, IndentOut, Stream, StreamOut, !IO) :-
     io.nl(Stream, !IO),
     StreamOut = Stream,
     IndentOut = Indent.
+    
+json.write_array_element_str(Value, Indent, IndentOut, StringIn, StringOut) :-
+    json.write_value(Value, ValString),
+    StringOut = StringIn ++ string.pad_left(ValString, ' ', Indent) ++ ",\n",
+    IndentOut = Indent.
 
 :- pred json.write_object_element(json.property::in, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
 :- pred json.write_object_element(json.property::in, int::in, int::out, io.output_stream::in, io.output_stream::out, io::di, io::uo) is det.
+
+:- pred json.write_object_element_str(json.property::in, string::in, string::out) is det.
+:- pred json.write_object_element_str(json.property::in, int::in, int::out, string::in, string::out) is det.
 
 json.write_object_element(Property,Stream, Out, !IO) :-
     json.write_property(Property, Stream, !IO),
     io.write_char(Stream, ',', !IO),
      Out = Stream.
+
+json.write_object_element_str(Value, StringIn, StringOut) :-
+    json.write_property(Value, ValString),
+    StringOut = StringIn ++ ValString ++ ",".
 
 json.write_object_element(Property, Indent, IndentOut, Stream, StreamOut, !IO) :-
     json.write_indent(Indent, Stream, !IO),
@@ -211,6 +374,11 @@ json.write_object_element(Property, Indent, IndentOut, Stream, StreamOut, !IO) :
     io.write_char(Stream, ',', !IO),
     io.nl(Stream, !IO),
     StreamOut = Stream,
+    IndentOut = Indent.
+
+json.write_object_element_str(Value, Indent, IndentOut, StringIn, StringOut) :-
+    json.write_property(Value, ValString),
+    StringOut = StringIn ++ string.pad_left(ValString, ' ', Indent) ++ ",\n",
     IndentOut = Indent.
 
 json.write_array(JSArray, Stream, !IO) :-
@@ -225,6 +393,18 @@ json.write_array(JSArray, Stream, !IO) :-
         io.write_char(Stream, '[', !IO), io.write_char(Stream, ']', !IO)
     ),
     io.nl(Stream, !IO).
+
+
+json.write_array(JSArray, String) :-
+    JSArray = json.array(Array),
+    ( if list.split_last(Array, NewArray, Last)
+      then
+        list.foldl(json.write_array_element_str, NewArray, "[", NewString),
+        json.write_value(Last, ValString),
+        String = NewString ++ ValString ++ "]\n"
+      else
+        String = "[]\n"
+    ).
 
 json.write_array(JSArray, Step, Stream, !IO) :-
     JSArray = json.array(Array),
@@ -242,6 +422,17 @@ json.write_array(JSArray, Step, Stream, !IO) :-
     ),
     io.nl(Stream, !IO).
 
+json.write_array(JSArray, Step, String) :-
+    JSArray = json.array(Array),
+    ( if list.split_last(Array, NewArray, Last)
+      then
+        list.foldl2(json.write_array_element_str, NewArray, Step+1, _, string.pad_left("[", ' ', Step), NewString),
+        json.write_value(Last, ValString),
+        String = NewString ++ string.pad_right(string.pad_left(ValString, ' ', Step) ++ "\n", ' ', Step) ++ "]\n"
+      else
+        String = string.duplicate_char(' ', Step) ++ "[]\n"
+    ).
+
 json.write_object(JSObject, Stream, !IO) :-
     JSObject = json.object(Object),
     ( if list.split_last(Object, NewObject, Last)
@@ -254,6 +445,17 @@ json.write_object(JSObject, Stream, !IO) :-
         io.write_char(Stream, '{', !IO), io.write_char(Stream, '}', !IO)
     ),
     io.nl(Stream, !IO).
+    
+json.write_object(JSObject, String) :-
+    JSObject = json.object(Object),
+    ( if list.split_last(Object, NewObject, Last)
+      then
+        list.foldl(json.write_object_element_str, NewObject, "{", NewString),
+        json.write_property(Last, PropString),
+        String = NewString ++ PropString ++ "}\n"
+      else
+        String = "{}\n"
+    ).
 
 json.write_object(JSObject, Step, Stream, !IO) :-
     JSObject = json.object(Object),
@@ -272,6 +474,17 @@ json.write_object(JSObject, Step, Stream, !IO) :-
     io.write_char(Stream, ',', !IO),
     io.nl(Stream, !IO).
 
+json.write_object(JSObject, Step, String) :-
+    JSObject = json.object(Object),
+    ( if list.split_last(Object, NewObject, Last)
+      then
+        list.foldl2(json.write_object_element_str, NewObject, Step+1, _, string.pad_left("[", ' ', Step), NewString),
+        json.write_property(Last, PropString),
+        String = NewString ++ string.pad_right(string.pad_left(PropString, ' ', Step) ++ "\n", ' ', Step) ++ "]\n"
+      else
+        String = string.duplicate_char(' ', Step) ++ "{}\n"
+    ).
+
 json.write(Result, Stream, !IO) :-
     (
         Result = null,
@@ -284,6 +497,18 @@ json.write(Result, Stream, !IO) :-
         json.write_object(json.object(A), Stream, !IO)
     ),
     io.nl(Stream, !IO).
+
+json.write(Result, String) :-
+    (
+        Result = null,
+        String = "null"
+    ;
+        Result = json.array(A),
+        json.write_array(json.array(A), String)
+    ;
+        Result = json.object(A),
+        json.write_object(json.object(A), String)
+    ).
 
 json.write_pretty(Result, Stream, !IO) :-
     (
@@ -298,6 +523,17 @@ json.write_pretty(Result, Stream, !IO) :-
     ),
     io.nl(Stream, !IO).
 
+json.write_pretty(Result, String) :-
+    (
+        Result = null,
+        String = "null\n"
+    ;
+        Result = json.array(A),
+        json.write_array(json.array(A), 0, String)
+    ;
+        Result = json.object(A),
+        json.write_object(json.object(A), 0, String)
+    ).
 
 :- import_module char.
 :- import_module int.
@@ -749,44 +985,3 @@ json.parse(String::in, Result::out) :-
             Result = json.error(0, 0, "Object or Array", "")
         )
     ).
-
-main(!IO) :-
-    open_input("new_instruments.json", InResult, !IO),
-    open_output("new_new_instruments.json", OutResult, !IO),
-    ( if InResult = ok(InStream), OutResult = ok(OutStream)
-      then
-        io.read_file_as_string(InStream, StringResult, !IO),
-        ( if StringResult = ok(String)
-          then
-            json.parse(String, Result),
-            (
-                Result = ok(Tree),
-                io.write_string("Parse successful for ops.json\n", !IO),
-                json.write(Tree, OutStream, !IO)
-            ;
-                Result = error(L, At, E, U),
-                io.write_string("Could not parse file ops.json\n", !IO),
-                io.format("Error at line %i, total character %i: Expected %s, not %s\n", [i(L), i(At), s(E), s(U)], !IO)
-            )
-          else
-            io.write_string("Could not read file ops.json\n", !IO)
-        ),
-        close_input(InStream, !IO),
-        close_output(OutStream, !IO)
-      else
-        (
-            InResult = ok(_)
-        ;
-            InResult = error(Err1),
-            io.format("IO Error with input stream ops.json\n%s\n", [s(error_message(Err1))], !IO)
-        ),
-        (
-            OutResult = ok(_)
-        ;
-            OutResult = error(Err2), 
-            io.format("IO Error with output stream new_ops.json\n%s\n", [s(error_message(Err2))], !IO)
-        )
-    ).
-      
-    
-    
